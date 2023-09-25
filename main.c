@@ -1,10 +1,10 @@
 #include <stdio.h>
-#include <stdbool.h>
 #include <string.h>
 #include <ctype.h>
-#include <stdlib.h>  // this for strtol and strtod ^))
+#include <stdbool.h>
+#include <stdlib.h>
 
-// token types
+// Define token types
 enum TokenType {
     NUMBER,
     STRING_CONSTANT,
@@ -15,74 +15,11 @@ enum TokenType {
     OPERATOR,
     PUNCTUATION,
     IDENTIFIER,
-    ERROR
+    ERROR,
+    FLOATING_POINT_NUMBER,
+    HEXADECIMAL,
+    LIBRARY
 };
-
-// Function to classify a token
-enum TokenType classifyToken(char *token) {
-    if (isdigit(token[0])) {
-        // Check for different types of numbers
-        char *endptr;
-        strtol(token, &endptr, 0);
-        if (*endptr == '\0') {
-            return NUMBER;
-        }
-        if (*endptr == '.') {
-            strtod(token, &endptr);
-            if (*endptr == '\0') {
-                return NUMBER;
-            }
-        }
-        if (strlen(token) >= 3 && token[0] == '0' && (token[1] == 'x' || token[1] == 'X')) {
-            for (int i = 2; i < strlen(token); i++) {
-                if (!isxdigit(token[i])) {
-                    return ERROR;
-                }
-            }
-            return NUMBER;
-        }
-        return ERROR;
-    }
-    if (token[0] == '"' && token[strlen(token) - 1] == '"') {
-        return STRING_CONSTANT;
-    }
-    if (token[0] == '\'' && strlen(token) == 3 && token[2] == '\'') {
-        return CHAR_CONSTANT;
-    }
-    if (token[0] == '#') {
-        return PREPROCESSOR_DIRECTIVE;
-    }
-    if (strncmp(token, "//", 2) == 0 || (strncmp(token, "/*", 2) == 0 && token[strlen(token) - 2] == '*' && token[strlen(token) - 1] == '/')) {
-        return COMMENT;
-    }
-    char *reservedWords[] = {"int", "float", "if", "else", "for", "while", "return"};
-    for (int i = 0; i < sizeof(reservedWords) / sizeof(reservedWords[0]); i++) {
-        if (strcmp(token, reservedWords[i]) == 0) {
-            return RESERVED_WORD;
-        }
-    }
-    char *operators[] = {"+", "-", "*", "/", "=", "==", "!=", "<", ">", "<=", ">="};
-    for (int i = 0; i < sizeof(operators) / sizeof(operators[0]); i++) {
-        if (strcmp(token, operators[i]) == 0) {
-            return OPERATOR;
-        }
-    }
-    char *punctuation[] = {";", ",", "(", ")", "{", "}"};
-    for (int i = 0; i < sizeof(punctuation) / sizeof(punctuation[0]); i++) {
-        if (strcmp(token, punctuation[i]) == 0) {
-            return PUNCTUATION;
-        }
-    }
-    if (isalpha(token[0]) || token[0] == '_') {
-        for (int i = 1; i < strlen(token); i++) {
-            if (!isalnum(token[i]) && token[i] != '_') {
-                return ERROR;
-            }
-        }
-        return IDENTIFIER;
-    }
-    return ERROR;
-}
 
 // Array of token names for printing
 const char *tokenNames[] = {
@@ -95,26 +32,143 @@ const char *tokenNames[] = {
         "OPERATOR",
         "PUNCTUATION",
         "IDENTIFIER",
-        "ERROR"
+        "ERROR",
+        "FLOATING_POINT_NUMBER",
+        "HEXADECIMAL",
+        "LIBRARY"
 };
 
-int main() {
-    char input[] = "int main() {\n"
-                   "    int x = 10;\n"
-                   "    float y = 3.14;\n"
-                   "    if (x > 5) {\n"
-                   "        printf(\"Hello, world!\\n\");\n"
-                   "    }\n"
-                   "    return 0;\n"
-                   "}\n";
+// List of reserved words
+const char *reservedWords[] = {
+        "int", "return", "double", "float", "char", //... (add other reserved words)
+};
 
-    // Split the input into tokens
-    char *token = strtok(input, " \t\n(){}[];,");
-    while (token != NULL) {
-        enum TokenType type = classifyToken(token);
-        printf("<%s, %s>\n", token, type == ERROR ? "ERROR" : tokenNames[type]);
-        token = strtok(NULL, " \t\n(){}[];,");
+const char *knownLibraries[] = {
+        "stdio.h",
+        "stdlib.h",
+        "string.h",
+        // ... add other known libraries here
+};
+
+
+
+bool isReservedWord(const char *token) {
+    size_t count = sizeof(reservedWords) / sizeof(reservedWords[0]);
+    for (size_t i = 0; i < count; ++i) {
+        if (strcmp(token, reservedWords[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool isOperator(char ch) {
+    return strchr("+-*/=<>!&|^%", ch) != NULL;
+}
+
+bool isPunctuation(char ch) {
+    return strchr(",.;:(){}[]", ch) != NULL;
+}
+
+enum TokenType classifyToken(char *token) {
+    if (token == NULL || token[0] == '\0') {
+        return ERROR;
     }
 
-    return 0;
+    if (token[0] == '<' && token[strlen(token) - 1] == '>') {
+        return LIBRARY;
+    }
+    // Check for a custom string constant of the form <<...>>
+    if (token[0] == '<' && token[1] == '<' && token[strlen(token)-2] == '>' && token[strlen(token)-1] == '>') {
+        return STRING_CONSTANT;
+    }
+    // Check for a preprocessor directive
+    if (token[0] == '#') {
+        return PREPROCESSOR_DIRECTIVE;
+    }
+
+    // Check for a comment
+    if (token[0] == '/' && (token[1] == '/' || token[1] == '*')) {
+        return COMMENT;
+    }
+
+    // Check for a reserved word
+    if (isReservedWord(token)) {
+        return RESERVED_WORD;
+    }
+
+    // Check for an operator
+    if (isOperator(token[0]) && strlen(token) == 1) {
+        return OPERATOR;
+    }
+
+    // Check for a punctuation symbol
+    if (isPunctuation(token[0]) && strlen(token) == 1) {
+        return PUNCTUATION;
+    }
+
+    // Check for an identifier (assume any sequence of letters and/or digits)
+    if (isalpha(token[0]) || token[0] == '_') {
+        return IDENTIFIER;
+    }
+
+    // Check for a number (integer, floating-point, or hexadecimal)
+    if (isdigit(token[0]) || (token[0] == '-' && isdigit(token[1]))) {
+        char *endptr;
+        strtol(token, &endptr, 0);
+        if (*endptr == '\0') {
+            return NUMBER;
+        }
+        if (*endptr == '.') {
+            strtod(token, &endptr);
+            if (*endptr == '\0') {
+                return FLOATING_POINT_NUMBER;
+            }
+        }
+        if (strstr(token, "0x") == token || strstr(token, "0X") == token) {
+            return HEXADECIMAL;
+        }
+    }
+
+    // Check for string constant
+    if (token[0] == '"' && token[strlen(token)-1] == '"') {
+        return STRING_CONSTANT;
+    }
+
+    // Check for character constant
+    if (token[0] == '\'' && token[strlen(token)-1] == '\'') {
+        return CHAR_CONSTANT;
+    }
+
+    return ERROR;
+}
+
+int main() {
+    FILE *inputFile = fopen("regex.txt", "r");
+    if (!inputFile) {
+        perror("Error opening input file");
+        return EXIT_FAILURE;
+    }
+
+    FILE *outputFile = fopen("out.txt", "w");
+    if (!outputFile) {
+        perror("Error opening output file");
+        fclose(inputFile);
+        return EXIT_FAILURE;
+    }
+
+    char line[256];
+    while (fgets(line, sizeof(line), inputFile)) {
+        char *token = strtok(line, " \t\n(){}[];,");
+        while (token != NULL) {
+            enum TokenType type = classifyToken(token);
+            fprintf(outputFile, "<%s> - <%s>\n", token, tokenNames[type]);
+            token = strtok(NULL, " \t\n(){}[];,");
+        }
+    }
+
+    fclose(inputFile);
+    fclose(outputFile);
+
+    return EXIT_SUCCESS;
 }
